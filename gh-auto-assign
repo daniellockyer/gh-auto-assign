@@ -1,0 +1,31 @@
+#!/bin/bash
+set -e
+
+if ! type -p jq >/dev/null; then
+    echo "jq not found on the system" >&2
+    exit 1
+fi
+
+if [[ ! -d ".github" ]]; then
+    echo ".github folder does not exist" >&2
+    exit 1
+fi
+
+if [[ ! -f ".github/AUTO_ASSIGN" ]]; then
+    echo ".github/AUTO_ASSIGN file does not exist" >&2
+    exit 1
+fi
+
+gh pr list \
+    --json assignees,number,headRefName \
+    --jq '.[] | select((.assignees | length == 0))' | \
+        jq -r '[.number, .headRefName] | @tsv' | \
+        while IFS=$'\t' read -r number headRefName; do
+            while read -r bashPathRegex targetAssignee; do
+                if [[ "$headRefName" =~ $bashPathRegex ]]; then
+                    echo "Assigning $number ($headRefName) to $targetAssignee"
+                    gh pr edit $number --add-assignee $targetAssignee
+                    break
+                fi
+            done < .github/AUTO_ASSIGN
+        done
